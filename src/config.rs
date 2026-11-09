@@ -25,6 +25,8 @@ impl From<homeport::InstallKind> for InstallKind {
 pub struct UpdaterConfig {
 	/// GitHub repository in `"owner/repo"` format.
 	pub github_repo: String,
+	/// Base URL of the releases API (defaults to <https://api.github.com>). Set it to a Forgejo `/api/v1` URL for Forgejo-hosted releases.
+	pub api_base_url: String,
 	/// App name used to derive asset file names.
 	/// On Windows a zip asset is expected to be `{app_name}.zip` and an installer
 	/// `{app_name}_setup.exe`. On Linux the equivalents are `{app_name}.tar.gz` and
@@ -78,6 +80,7 @@ impl UpdaterConfig {
 		let current_version = current_version.into();
 		Self {
 			github_repo: github_repo.into(),
+			api_base_url: "https://api.github.com".into(),
 			user_agent: format!("{app_name}/{current_version}"),
 			app_name,
 			app_display_name: app_display_name.into(),
@@ -113,6 +116,12 @@ impl UpdaterConfig {
 		self
 	}
 
+	/// Sets the base URL of the releases API. See [`UpdaterConfig::api_base_url`].
+	#[must_use]
+	pub fn with_api_base_url(mut self, url: impl Into<String>) -> Self {
+		self.api_base_url = url.into();
+		self
+	}
 	/// Sets the suffix inserted before the extension in the expected asset file names. See
 	/// [`UpdaterConfig::asset_suffix`].
 	#[must_use]
@@ -191,5 +200,16 @@ mod tests {
 		let config = config().with_asset_suffix("-x64").with_installer_asset_suffix("");
 		assert_eq!(config.clone().with_install_kind(InstallKind::Installer).effective_asset_suffix(), "");
 		assert_eq!(config.with_install_kind(InstallKind::Portable).effective_asset_suffix(), "-x64");
+	}
+
+	#[test]
+	fn api_base_url_defaults_to_github() {
+		assert_eq!(config().api_base_url, "https://api.github.com");
+	}
+
+	#[test]
+	fn with_api_base_url_overrides() {
+		let config = config().with_api_base_url("https://git.example.com/api/v1");
+		assert_eq!(config.api_base_url, "https://git.example.com/api/v1");
 	}
 }
