@@ -27,12 +27,17 @@ pub struct AssetPair {
 	pub signature_url: String,
 }
 
+/// Joins the configured API base URL with a /repos/... path.
+fn api_url(config: &UpdaterConfig, path: &str) -> String {
+	format!("{}/repos/{}{}", config.api_base_url.trim_end_matches('/'), config.github_repo, path)
+}
+
 pub fn fetch_latest_release(config: &UpdaterConfig) -> Result<GithubRelease, UpdateError> {
-	fetch_release(config, &format!("https://api.github.com/repos/{}/releases/latest", config.github_repo))
+	fetch_release(config, &api_url(config, "/releases/latest"))
 }
 
 pub fn fetch_release_by_tag(config: &UpdaterConfig, tag: &str) -> Result<GithubRelease, UpdateError> {
-	fetch_release(config, &format!("https://api.github.com/repos/{}/releases/tags/{tag}", config.github_repo))
+	fetch_release(config, &api_url(config, &format!("/releases/tags/{tag}")))
 }
 
 fn fetch_release(config: &UpdaterConfig, url: &str) -> Result<GithubRelease, UpdateError> {
@@ -189,5 +194,13 @@ mod tests {
 		assert_eq!(pair.download_url, "https://example.com/myapp_setup.exe");
 		let pair = pick_asset_pair("myapp", portable.effective_asset_suffix(), "", "zip", &assets).unwrap();
 		assert_eq!(pair.download_url, "https://example.com/myapp-x64.zip");
+	}
+
+	#[test]
+	fn api_url_uses_configured_base() {
+		let config = UpdaterConfig::new("o/r", "myapp", "My App", "key", "1.0.0");
+		assert_eq!(api_url(&config, "/releases/latest"), "https://api.github.com/repos/o/r/releases/latest");
+		let config = config.with_api_base_url("https://git.example.com/api/v1/");
+		assert_eq!(api_url(&config, "/releases/latest"), "https://git.example.com/api/v1/repos/o/r/releases/latest");
 	}
 }
