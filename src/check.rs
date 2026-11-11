@@ -3,7 +3,7 @@ use patois::t;
 use crate::{
 	UpdateError, UpdaterConfig,
 	github::{self, AssetPair, GithubRelease},
-	version::parse_semver,
+	version::{Version, parse_semver},
 };
 
 const SHORT_HASH_LEN: usize = 7;
@@ -66,8 +66,47 @@ fn check_stable(config: &UpdaterConfig) -> Result<UpdateCheckOutcome, UpdateErro
 	if current >= latest {
 		return Ok(UpdateCheckOutcome::UpToDate(release.tag_name));
 	}
-	let notes = release.body.clone().unwrap_or_default();
+	// An update spanning several releases shows every skipped
+	// version's notes, newest first — someone upgrading across
+	// versions wants the fixes from all of them, not just the
+	// newest. The releases list is best-effort: if it fails,
+	// fall back to the latest release's notes alone.
+	let notes = match github::fetch_releases(config) {
+		Ok(releases) => combine_notes(&releases, current, latest),
+		Err(_) => release.body.clone().unwrap_or_default(),
+	};
 	update_available(config, &release, release.tag_name.clone(), notes)
+}
+
+/// Release notes for every version in (`current`, `latest`],
+/// newest first, each under its own "## <tag>" heading — the
+/// same shape the View Changelog window renders. Releases whose
+/// tags don't parse as versions are skipped, as are drafts;
+/// a release with no body contributes its heading only.
+fn combine_notes(releases: &[GithubRelease], current: Version, latest: Version) -> String {
+	let mut picked: Vec<(Version, &GithubRelease)> = releases
+		.iter()
+		.filter(|r| !r.draft)
+		.filter_map(|r| parse_semver(&r.tag_name).map(|v| (v, r)))
+		.filter(|(v, _)| *v > current && *v <= latest)
+		.collect();
+	// The API returns newest first already; sort anyway so the
+	// order never depends on the host's listing order.
+	picked.sort_by_key(|(v, _)| std::cmp::Reverse(*v));
+	let mut out = String::new();
+	for (_, release) in picked {
+		if !out.is_empty() {
+			out.push_str("\n\n");
+		}
+		out.push_str("## ");
+		out.push_str(&release.tag_name);
+		let body = release.body.as_deref().unwrap_or_default().trim();
+		if !body.is_empty() {
+			out.push_str("\n\n");
+			out.push_str(body);
+		}
+	}
+	out
 }
 
 fn check_dev(config: &UpdaterConfig) -> Result<UpdateCheckOutcome, UpdateError> {
@@ -110,4 +149,52 @@ fn update_available(
 		signature_url,
 		release_notes,
 	}))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn rel(tag: &str, body: Option<&str>) -> GithubRelease {
+		GithubRelease { tag_name: tag.into(), body: body.map(str::to_string), draft: false, assets: Vec::new() }
+	}
+
+	fn v(major: u32, minor: u32, patch: u32) -> Version {
+		parse_semver(&format!("{major}.{minor}.{patch}")).expect("test version parses")
+	}
+
+	#[test]
+	fn combine_notes_covers_every_skipped_version_newest_first() {
+		// Brandon's case: running 0.1.85, latest is 0.1.88 — the
+		// notes must include .86 and .87, not just .88.
+		let releases = vec![
+			rel("v0.1.88", Some("- fix A")),
+			rel("v0.1.87", Some("- fix B")),
+			rel("v0.1.86", Some("- fix C")),
+			rel("v0.1.85", Some("- old")),
+		];
+		let out = combine_notes(&releases, v(0, 1, 85), v(0, 1, 88));
+		assert!(out.starts_with("## v0.1.88\n\n- fix A"), "{out}");
+		assert!(out.contains("## v0.1.87\n\n- fix B"), "{out}");
+		assert!(out.contains("## v0.1.86\n\n- fix C"), "{out}");
+		assert!(!out.contains("- old"), "the running version's own notes are excluded: {out}");
+		assert!(out.find("v0.1.88").unwrap() < out.find("v0.1.87").unwrap());
+		assert!(out.find("v0.1.87").unwrap() < out.find("v0.1.86").unwrap());
+	}
+
+	#[test]
+	fn combine_notes_single_step_is_just_that_version() {
+		let releases = vec![rel("v0.1.86", Some("- fix C")), rel("v0.1.85", Some("- old"))];
+		let out = combine_notes(&releases, v(0, 1, 85), v(0, 1, 86));
+		assert_eq!(out, "## v0.1.86\n\n- fix C");
+	}
+
+	#[test]
+	fn combine_notes_skips_drafts_unversioned_tags_and_empty_bodies() {
+		let mut draft = rel("v0.1.87", Some("- secret"));
+		draft.draft = true;
+		let releases = vec![rel("v0.1.88", None), draft, rel("latest", Some("- dev")), rel("v0.1.86", Some(""))];
+		let out = combine_notes(&releases, v(0, 1, 85), v(0, 1, 88));
+		assert_eq!(out, "## v0.1.88\n\n## v0.1.86");
+	}
 }
