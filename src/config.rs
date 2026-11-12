@@ -65,6 +65,10 @@ pub struct UpdaterConfig {
 	/// Use this for an explicit configuration directory that must survive a Launch Services launch.
 	/// Ignored on other platforms. Values are passed as arguments, never as shell source.
 	pub macos_relaunch_env: Vec<(String, OsString)>,
+	/// A second release source, as `(api_base_url, repo)`, tried when the primary one fails with a
+	/// network, HTTP or malformed-response error: for the update check, and for the download when
+	/// the release was found but its asset cannot be fetched. `None` by default.
+	pub fallback: Option<(String, String)>,
 }
 
 impl UpdaterConfig {
@@ -92,7 +96,21 @@ impl UpdaterConfig {
 			installer_asset_suffix: None,
 			installer_args: vec!["/silent".into()],
 			macos_relaunch_env: Vec::new(),
+			fallback: None,
 		}
+	}
+
+	/// Sets the backup release source. See [`UpdaterConfig::fallback`].
+	#[must_use]
+	pub fn with_fallback(mut self, api_base_url: impl Into<String>, repo: impl Into<String>) -> Self {
+		self.fallback = Some((api_base_url.into(), repo.into()));
+		self
+	}
+
+	/// This config pointed at the fallback source, without a further fallback.
+	pub(crate) fn fallback_config(&self) -> Option<Self> {
+		let (api_base_url, repo) = self.fallback.clone()?;
+		Some(Self { api_base_url, github_repo: repo, fallback: None, ..self.clone() })
 	}
 
 	/// Sets the commit hash of the running app. See [`UpdaterConfig::current_commit`].
@@ -200,6 +218,19 @@ mod tests {
 		let config = config().with_asset_suffix("-x64").with_installer_asset_suffix("");
 		assert_eq!(config.clone().with_install_kind(InstallKind::Installer).effective_asset_suffix(), "");
 		assert_eq!(config.with_install_kind(InstallKind::Portable).effective_asset_suffix(), "-x64");
+	}
+
+	#[test]
+	fn fallback_config_swaps_the_source_and_drops_the_fallback() {
+		assert!(config().fallback_config().is_none());
+		let primary = config()
+			.with_api_base_url("https://git.example.com/api/v1")
+			.with_fallback("https://api.github.com", "mirror/app");
+		let backup = primary.fallback_config().unwrap();
+		assert_eq!(backup.api_base_url, "https://api.github.com");
+		assert_eq!(backup.github_repo, "mirror/app");
+		assert!(backup.fallback.is_none());
+		assert_eq!(backup.app_name, primary.app_name);
 	}
 
 	#[test]

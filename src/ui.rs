@@ -16,7 +16,7 @@ use wxdragon::{ffi, prelude::*, window::WxWidget};
 pub use self::markdown::markdown_to_text;
 use crate::{
 	UpdateAvailableResult, UpdateChannel, UpdateCheckOutcome, UpdateError, UpdaterConfig, check_for_updates,
-	download_update_file,
+	download::download_with_fallback,
 	platform::{self, InstallOutcome},
 };
 
@@ -230,7 +230,7 @@ fn start_download(
 
 /// Downloads and verifies the update, moving the download window's gauge as it goes.
 fn fetch(config: &UpdaterConfig, result: &UpdateAvailableResult, progress: &Progress) -> Result<PathBuf, UpdateError> {
-	download_update_file(config, &result.download_url, &result.signature_url, progress.cancel_flag(), |done, total| {
+	download_with_fallback(config, result, progress.cancel_flag(), |done, total| {
 		progress.set(done, Some(total));
 	})
 }

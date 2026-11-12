@@ -9,7 +9,7 @@ use std::{
 use minisign_verify::{PublicKey, Signature};
 use patois::t;
 
-use crate::{UpdateError, UpdaterConfig, http, platform};
+use crate::{UpdateAvailableResult, UpdateError, UpdaterConfig, github, http, platform};
 
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_mins(10);
 const CHUNK_SIZE: usize = 8192;
@@ -108,6 +108,35 @@ pub fn download_update_file(
 	#[cfg(target_os = "macos")]
 	let _ = private_dir.keep();
 	Ok(final_path)
+}
+
+/// Downloads the asset `result` names, and when its source fails, the same release's asset from
+/// [`UpdaterConfig::fallback`]. A fallback that fails too reports the first error.
+pub(crate) fn download_with_fallback(
+	config: &UpdaterConfig,
+	result: &UpdateAvailableResult,
+	cancelled: &AtomicBool,
+	mut progress_callback: impl FnMut(u64, u64),
+) -> Result<PathBuf, UpdateError> {
+	let error = match download_update_file(
+		config,
+		&result.download_url,
+		&result.signature_url,
+		cancelled,
+		&mut progress_callback,
+	) {
+		Err(error) if error.is_source_failure() => error,
+		outcome => return outcome,
+	};
+	let Some(backup) = config.fallback_config() else {
+		return Err(error);
+	};
+	let Ok(pair) = github::fetch_release_by_tag(&backup, &result.tag)
+		.and_then(|release| github::require_asset_pair(&backup, &release))
+	else {
+		return Err(error);
+	};
+	download_update_file(&backup, &pair.download_url, &pair.signature_url, cancelled, progress_callback)
 }
 
 fn check_cancelled(cancelled: &AtomicBool) -> Result<(), UpdateError> {

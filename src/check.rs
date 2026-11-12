@@ -29,6 +29,8 @@ pub struct UpdateAvailableResult {
 	pub signature_url: String,
 	/// Markdown release notes. On the dev channel, only the commits newer than the running build.
 	pub release_notes: String,
+	/// Tag of the release the asset belongs to, used to find the same asset on the fallback source.
+	pub tag: String,
 }
 
 /// Result of a successful update check.
@@ -51,9 +53,17 @@ pub enum UpdateCheckOutcome {
 /// Returns [`UpdateError`] on network failure, HTTP error, invalid version strings, or missing
 /// release assets.
 pub fn check_for_updates(config: &UpdaterConfig, channel: UpdateChannel) -> Result<UpdateCheckOutcome, UpdateError> {
-	match channel {
+	let check = |config: &UpdaterConfig| match channel {
 		UpdateChannel::Stable => check_stable(config),
 		UpdateChannel::Dev => check_dev(config),
+	};
+	match check(config) {
+		// The fallback's own error would hide why the primary source failed, so report the primary's.
+		Err(error) if error.is_source_failure() => match config.fallback_config() {
+			Some(backup) => check(&backup).map_err(|_| error),
+			None => Err(error),
+		},
+		outcome => outcome,
 	}
 }
 
@@ -125,6 +135,7 @@ fn update_available(
 		download_url,
 		signature_url,
 		release_notes,
+		tag: release.tag_name.clone(),
 	}))
 }
 

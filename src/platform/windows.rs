@@ -55,6 +55,10 @@ pub fn install(config: &UpdaterConfig, path: &Path) -> Result<InstallOutcome, St
 	Command::new("powershell.exe")
 		.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"])
 		.arg(&script)
+		// An app started from PowerShell 7 inherits its module path, and Windows PowerShell then
+		// loads PowerShell 7's Archive module, whose Expand-Archive fails there. Without the
+		// variable, Windows PowerShell builds its own default path.
+		.env_remove("PSModulePath")
 		.creation_flags(CREATE_NO_WINDOW.0)
 		.spawn()
 		.map_err(|e| format!("{}: {e}", t("Failed to launch update script")))?;
@@ -107,9 +111,13 @@ fn installer_script(pid: u32, installer_args: &[String], installer: &str, curren
 	)
 }
 
+/// Extraction is retried, because the executable can stay locked for a moment after the app exits.
+/// A copy of the same executable still running (one whose window closed but whose process did not
+/// end) would keep it locked for good, so after a few failures those copies are ended. The zip is
+/// only removed once it is unpacked.
 fn zip_update_script(pid: u32, zip: &str, dest_dir: &str, current_exe: &str) -> String {
 	format!(
-		"Start-Sleep -Seconds 1; Wait-Process -Id {pid} -ErrorAction SilentlyContinue; Expand-Archive -Path {zip_q} -DestinationPath {dest_q} -Force; Remove-Item -Path {zip_q} -Force; $env:{RELAUNCH_ENV}='1'; Start-Process {exe_q}",
+		"Start-Sleep -Seconds 1; Wait-Process -Id {pid} -ErrorAction SilentlyContinue; for ($i = 0; $i -lt 30; $i++) {{ try {{ Expand-Archive -Path {zip_q} -DestinationPath {dest_q} -Force -ErrorAction Stop; Remove-Item -Path {zip_q} -Force; break }} catch {{ if ($i -eq 4) {{ Get-Process | Where-Object {{ $_.Path -eq {exe_q} }} | Stop-Process -Force -ErrorAction SilentlyContinue }}; Start-Sleep -Seconds 1 }} }}; $env:{RELAUNCH_ENV}='1'; Start-Process {exe_q}",
 		zip_q = ps_quote(zip),
 		dest_q = ps_quote(dest_dir),
 		exe_q = ps_quote(current_exe)
@@ -185,6 +193,16 @@ mod tests {
 		let installer = installer_script(7, &[], r"C:\t\s.exe", r"C:\a\a.exe");
 		assert!(installer.contains(r"-Wait; $env:SHIP_SHAPE_RELAUNCHED='1'; Start-Process -FilePath 'C:\a\a.exe'"));
 		let zip = zip_update_script(7, r"C:\a\a.zip", r"C:\a", r"C:\a\a.exe");
-		assert!(zip.contains(r"-Force; $env:SHIP_SHAPE_RELAUNCHED='1'; Start-Process 'C:\a\a.exe'"));
+		assert!(zip.contains(r"} }; $env:SHIP_SHAPE_RELAUNCHED='1'; Start-Process 'C:\a\a.exe'"));
+	}
+
+	/// The zip is removed only after a successful unpack, and a still-running copy of the same
+	/// executable is ended before the retries run out.
+	#[test]
+	fn zip_script_retries_and_clears_leftover_copies() {
+		let zip = zip_update_script(7, r"C:\a\a.zip", r"C:\a", r"C:\a\a.exe");
+		assert!(zip.contains(r"-Force -ErrorAction Stop; Remove-Item -Path 'C:\a\a.zip' -Force; break"));
+		assert!(zip.contains(r"Where-Object { $_.Path -eq 'C:\a\a.exe' } | Stop-Process -Force"));
+		assert!(zip.contains("for ($i = 0; $i -lt 30; $i++)"));
 	}
 }

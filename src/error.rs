@@ -26,6 +26,14 @@ pub enum UpdateError {
 	Cancelled,
 }
 
+impl UpdateError {
+	/// The release source itself failed: unreachable, an HTTP error, or an answer that is not a
+	/// release. Only these make a [fallback source](crate::UpdaterConfig::fallback) worth trying.
+	pub(crate) const fn is_source_failure(&self) -> bool {
+		matches!(self, Self::Http(_) | Self::Network(_) | Self::InvalidResponse(_))
+	}
+}
+
 impl Display for UpdateError {
 	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
 		match self {
