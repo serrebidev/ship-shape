@@ -112,7 +112,7 @@ pub fn download_update_file(
 
 /// Downloads the asset `result` names, and when its source fails, the same release's asset from
 /// [`UpdaterConfig::fallback`]. A fallback that fails too reports the first error.
-pub(crate) fn download_with_fallback(
+pub fn download_with_fallback(
 	config: &UpdaterConfig,
 	result: &UpdateAvailableResult,
 	cancelled: &AtomicBool,
