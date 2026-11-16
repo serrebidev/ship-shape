@@ -1,6 +1,6 @@
 # Credits
 
-ship-shape is the auto-updater library the serrebi desktop apps share. It checks GitHub Releases for a newer version, shows the update dialogs, downloads and verifies the update, installs it, and relaunches the app.
+ship-shape is the auto-updater library the serrebi desktop apps share, from [accessware/ship-shape](https://github.com/accessware/ship-shape) by Quin Gillespie. It checks GitHub Releases for a newer version, shows the update dialogs, downloads and verifies the update, installs it, and relaunches the app.
 
 Third-party projects it uses:
 
