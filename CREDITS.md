@@ -9,3 +9,12 @@ Third-party projects it uses:
 - patois for translations.
 
 Questions and bug reports are welcome in the [SerrebiProjects Telegram group](https://t.me/SerrebiProjects). More serrebi projects: [projects.serrebiradio.com](https://projects.serrebiradio.com).
+
+
+## About this project
+
+- GitHub profile: [serrebidev](https://github.com/serrebidev)
+- Repository (GitHub): [https://github.com/serrebidev/ship-shape](https://github.com/serrebidev/ship-shape)
+- Repository (Forgejo): [https://git.serrebiradio.com/serrebi/ship-shape](https://git.serrebiradio.com/serrebi/ship-shape)
+- Projects site: [projects.serrebiradio.com](https://projects.serrebiradio.com)
+- Questions and bug reports: [SerrebiProjects Telegram group](https://t.me/SerrebiProjects)
