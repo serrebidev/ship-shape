@@ -4,6 +4,12 @@ Auto-updater library for wxDragon desktop apps on Windows, macOS, and Linux. It 
 Releases for a newer version, shows the update dialogs, downloads and verifies the update,
 installs it, and relaunches the app.
 
+[![Join SerrebiProjects on Telegram](https://img.shields.io/badge/Telegram-SerrebiProjects-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/SerrebiProjects)
+
+**Questions, bugs, or release news?** Join the [SerrebiProjects Telegram group](https://t.me/SerrebiProjects), the fastest place to get help.
+
+More serrebi projects: [projects.serrebiradio.com](https://projects.serrebiradio.com)
+
 ## Features
 
 - Stable (semver tag) and dev (rolling commit) release channels on GitHub Releases
@@ -208,3 +214,7 @@ It is a repository test harness, excluded from the published crate package.
 ## License
 
 MIT
+
+## Credits
+
+See [CREDITS.md](CREDITS.md) for where the ideas behind this project came from, and the third-party projects it builds on.
